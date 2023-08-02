@@ -235,15 +235,13 @@ func (p *Parser) parseCreateRetentionPolicyStatement() (*CreateRetentionPolicySt
 	}
 	stmt.Duration = d
 
-	// Parse required REPLICATION token.
-	if tok, pos, lit := p.ScanIgnoreWhitespace(); tok != REPLICATION {
-		return nil, newParseError(tokstr(tok, lit), []string{"REPLICATION"}, pos)
-	}
-
-	// Parse replication value.
-	n, err := p.ParseInt(1, math.MaxInt32)
-	if err != nil {
-		return nil, err
+	var n int = 1
+	// Parse optional REPLICATION token.
+	if tok, _, _ := p.ScanIgnoreWhitespace(); tok == REPLICATION {
+		// Parse replication value.
+		if n, err = p.ParseInt(1, math.MaxInt32); err != nil {
+			return nil, err
+		}
 	}
 	stmt.Replication = n
 
