@@ -22,6 +22,7 @@ import (
 	"strings"
 	"syscall"
 	"text/tabwriter"
+	"time"
 
 	"golang.org/x/crypto/ssh/terminal"
 
@@ -750,6 +751,10 @@ func (c *CommandLine) Insert(stmt string) error {
 		fmt.Printf("ERR: %s\n", err)
 		return nil
 	}
+
+	start := time.Now()
+	defer func() { fmt.Printf("\nelapsed:%s\n", time.Since(start).String()) }()
+
 	if _, err := c.Client.Write(*bp); err != nil {
 		fmt.Printf("ERR: %s\n", err)
 		if c.Database == "" {
@@ -814,6 +819,9 @@ func (c *CommandLine) ExecuteQuery(query string) error {
 			}
 		}()
 	}
+
+	start := time.Now()
+	defer func() { fmt.Printf("\nelapsed:%s\n", time.Since(start).String()) }()
 
 	response, err := c.Client.QueryContext(ctx, c.query(query))
 	if err != nil {
