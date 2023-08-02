@@ -55,3 +55,7 @@ require (
 	gonum.org/v1/gonum v0.6.0 // indirect
 	google.golang.org/grpc v1.26.0
 )
+
+replace (
+	github.com/influxdata/influxql => ./dev/github.com/influxdata/influxql
+)
