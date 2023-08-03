@@ -1952,7 +1952,21 @@ func (p *Parser) parseShowShardGroupsStatement() (*ShowShardGroupsStatement, err
 // parseShowShardsStatement parses a string for "SHOW SHARDS" statement.
 // This function assumes the "SHOW SHARDS" tokens have already been consumed.
 func (p *Parser) parseShowShardsStatement() (*ShowShardsStatement, error) {
-	return &ShowShardsStatement{}, nil
+	// return &ShowShardsStatement{}, nil
+	stmt := &ShowShardsStatement{}
+	var err error
+	// Parse optional ON clause.
+	if tok, _, _ := p.ScanIgnoreWhitespace(); tok == ON {
+		// Parse the database.
+		stmt.Database, err = p.ParseIdent()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		p.Unscan()
+	}
+
+	return stmt, err
 }
 
 // parseShowStatsStatement parses a string and returns a ShowStatsStatement.

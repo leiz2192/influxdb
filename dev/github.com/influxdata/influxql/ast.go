@@ -2731,7 +2731,9 @@ func (s *ShowShardGroupsStatement) RequiredPrivileges() (ExecutionPrivileges, er
 }
 
 // ShowShardsStatement represents a command for displaying shards in the cluster.
-type ShowShardsStatement struct{}
+type ShowShardsStatement struct{
+	Database string
+}
 
 // String returns a string representation.
 func (s *ShowShardsStatement) String() string { return "SHOW SHARDS" }

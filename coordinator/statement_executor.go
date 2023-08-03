@@ -796,6 +796,9 @@ func (e *StatementExecutor) executeShowShardsStatement(stmt *influxql.ShowShards
 
 	rows := []*models.Row{}
 	for _, di := range dis {
+		if stmt.Database != "" && stmt.Database != di.Name {
+			continue
+		}
 		row := &models.Row{Columns: []string{"id", "database", "retention_policy", "shard_group", "start_time", "end_time", "expiry_time", "owners"}, Name: di.Name}
 		for _, rpi := range di.RetentionPolicies {
 			for _, sgi := range rpi.ShardGroups {
