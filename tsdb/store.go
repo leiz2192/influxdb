@@ -997,6 +997,19 @@ func byDatabase(name string) func(sh *Shard) bool {
 	}
 }
 
+func byDatabaseAndRpName(dbName, rpName string) func(sh *Shard) bool {
+	return func(sh *Shard) bool {
+		if sh.database != dbName {
+			return false
+		}
+
+		if rpName != "" && sh.retentionPolicy != rpName {
+			return false
+		}
+		return true
+	}
+}
+
 // walkShards apply a function to each shard in parallel. fn must be safe for
 // concurrent use. If any of the functions return an error, the first error is
 // returned.
@@ -1130,7 +1143,6 @@ func (s *Store) sketchesForDatabase(dbName string, getSketches func(*Shard) (est
 //
 // Cardinality is calculated exactly by unioning all shards' bitsets of series
 // IDs. The result of this method cannot be combined with any other results.
-//
 func (s *Store) SeriesCardinality(ctx context.Context, database string) (int64, error) {
 	s.mu.RLock()
 	shards := s.filterShards(byDatabase(database))
@@ -1459,6 +1471,34 @@ func (s *Store) WriteToShardWithContext(ctx context.Context, shardID uint64, poi
 func (s *Store) MeasurementNames(ctx context.Context, auth query.FineAuthorizer, database string, cond influxql.Expr) ([][]byte, error) {
 	s.mu.RLock()
 	shards := s.filterShards(byDatabase(database))
+	s.mu.RUnlock()
+
+	sfile := s.seriesFile(database)
+	if sfile == nil {
+		return nil, nil
+	}
+
+	// Build indexset.
+	is := IndexSet{Indexes: make([]Index, 0, len(shards)), SeriesFile: sfile}
+	for _, sh := range shards {
+		index, err := sh.Index()
+		if err != nil {
+			return nil, err
+		}
+		is.Indexes = append(is.Indexes, index)
+	}
+	is = is.DedupeInmemIndexes()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+	return is.MeasurementNamesByExpr(auth, cond)
+}
+
+func (s *Store) MeasurementNamesV2(ctx context.Context, auth query.FineAuthorizer, database string, rpName string, cond influxql.Expr) ([][]byte, error) {
+	s.mu.RLock()
+	shards := s.filterShards(byDatabaseAndRpName(database, rpName))
 	s.mu.RUnlock()
 
 	sfile := s.seriesFile(database)
@@ -1873,7 +1913,6 @@ func (s *Store) TagValues(ctx context.Context, auth query.FineAuthorizer, shardI
 //
 // TODO(edd): a Tournament based merge (see: Knuth's TAOCP 5.4.1) might be more
 // appropriate at some point.
-//
 func mergeTagValues(valueIdxs [][2]int, tvs ...tagValues) TagValues {
 	var result TagValues
 	if len(tvs) == 0 {

@@ -235,15 +235,14 @@ func (p *Parser) parseCreateRetentionPolicyStatement() (*CreateRetentionPolicySt
 	}
 	stmt.Duration = d
 
-	var n int = 1
+	stmt.Replication = 1
 	// Parse optional REPLICATION token.
 	if tok, _, _ := p.ScanIgnoreWhitespace(); tok == REPLICATION {
 		// Parse replication value.
-		if n, err = p.ParseInt(1, math.MaxInt32); err != nil {
+		if stmt.Replication, err = p.ParseInt(1, math.MaxInt32); err != nil {
 			return nil, err
 		}
 	}
-	stmt.Replication = n
 
 	// Parse optional SHARD token.
 	if tok, _, _ := p.ScanIgnoreWhitespace(); tok == SHARD {
@@ -1064,6 +1063,16 @@ func (p *Parser) parseShowMeasurementsStatement() (*ShowMeasurementsStatement, e
 		// Parse the database.
 		stmt.Database, err = p.ParseIdent()
 		if err != nil {
+			return nil, err
+		}
+	} else {
+		p.Unscan()
+	}
+
+	// Parse optional FOR clause.
+	if tok, _, _ := p.ScanIgnoreWhitespace(); tok == FOR {
+		// Parse the database.
+		if stmt.RetentionPolicyName, err = p.ParseIdent(); err != nil {
 			return nil, err
 		}
 	} else {

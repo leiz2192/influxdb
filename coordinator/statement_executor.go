@@ -719,7 +719,7 @@ func (e *StatementExecutor) executeShowMeasurementsStatement(ctx *query.Executio
 		return ErrDatabaseNameRequired
 	}
 
-	names, err := e.TSDBStore.MeasurementNames(ctx.Context, ctx.Authorizer, q.Database, q.Condition)
+	names, err := e.TSDBStore.MeasurementNamesV2(ctx.Context, ctx.Authorizer, q.Database, q.RetentionPolicyName, q.Condition)
 	if err != nil || len(names) == 0 {
 		return ctx.Send(&query.Result{
 			Err: err,
@@ -1381,6 +1381,7 @@ type TSDBStore interface {
 	DeleteShard(id uint64) error
 
 	MeasurementNames(ctx context.Context, auth query.FineAuthorizer, database string, cond influxql.Expr) ([][]byte, error)
+	MeasurementNamesV2(ctx context.Context, auth query.FineAuthorizer, database string, rpName string, cond influxql.Expr) ([][]byte, error)
 	TagKeys(ctx context.Context, auth query.FineAuthorizer, shardIDs []uint64, cond influxql.Expr) ([]tsdb.TagKeys, error)
 	TagValues(ctx context.Context, auth query.FineAuthorizer, shardIDs []uint64, cond influxql.Expr) ([]tsdb.TagValues, error)
 

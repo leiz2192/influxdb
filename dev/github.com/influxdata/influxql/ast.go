@@ -2575,6 +2575,8 @@ type ShowMeasurementsStatement struct {
 	// Database to query. If blank, use the default database.
 	Database string
 
+	RetentionPolicyName string
+
 	// Measurement name or regex.
 	Source Source
 
