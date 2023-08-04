@@ -801,6 +801,9 @@ func (e *StatementExecutor) executeShowShardsStatement(stmt *influxql.ShowShards
 		}
 		row := &models.Row{Columns: []string{"id", "database", "retention_policy", "shard_group", "start_time", "end_time", "expiry_time", "owners"}, Name: di.Name}
 		for _, rpi := range di.RetentionPolicies {
+			if stmt.RetentionPolicyName != "" && stmt.RetentionPolicyName != rpi.Name {
+				continue
+			}
 			for _, sgi := range rpi.ShardGroups {
 				// Shards associated with deleted shard groups are effectively deleted.
 				// Don't list them.

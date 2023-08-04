@@ -1405,8 +1405,8 @@ func (s *SelectStatement) RewriteFields(m FieldMapper) (*SelectStatement, error)
 //
 // Conditions that can currently be simplified are:
 //
-//     - host =~ /^foo$/ becomes host = 'foo'
-//     - host !~ /^foo$/ becomes host != 'foo'
+//   - host =~ /^foo$/ becomes host = 'foo'
+//   - host !~ /^foo$/ becomes host != 'foo'
 //
 // Note: if the regex contains groups, character classes, repetition or
 // similar, it's likely it won't be rewritten. In order to support rewriting
@@ -2731,12 +2731,25 @@ func (s *ShowShardGroupsStatement) RequiredPrivileges() (ExecutionPrivileges, er
 }
 
 // ShowShardsStatement represents a command for displaying shards in the cluster.
-type ShowShardsStatement struct{
-	Database string
+type ShowShardsStatement struct {
+	Database            string
+	RetentionPolicyName string
 }
 
 // String returns a string representation.
-func (s *ShowShardsStatement) String() string { return "SHOW SHARDS" }
+func (s *ShowShardsStatement) String() string {
+	var buf strings.Builder
+	_, _ = buf.WriteString("SHOW SHARDS")
+	if s.Database != "" {
+		_, _ = buf.WriteString(" ON ")
+		_, _ = buf.WriteString(QuoteString(s.Database))
+	}
+	if s.RetentionPolicyName != "" {
+		_, _ = buf.WriteString(" FOR ")
+		_, _ = buf.WriteString(QuoteIdent(s.RetentionPolicyName))
+	}
+	return buf.String()
+}
 
 // RequiredPrivileges returns the privileges required to execute the statement.
 func (s *ShowShardsStatement) RequiredPrivileges() (ExecutionPrivileges, error) {

@@ -1966,6 +1966,17 @@ func (p *Parser) parseShowShardsStatement() (*ShowShardsStatement, error) {
 		p.Unscan()
 	}
 
+	// Parse optional FOR clause.
+	if tok, _, _ := p.ScanIgnoreWhitespace(); tok == FOR {
+		// Parse the database.
+		stmt.RetentionPolicyName, err = p.ParseIdent()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		p.Unscan()
+	}
+
 	return stmt, err
 }
 
