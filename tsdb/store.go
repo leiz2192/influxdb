@@ -969,6 +969,34 @@ func (s *Store) DeleteMeasurement(database, name string) error {
 	})
 }
 
+func (s *Store) DeleteMeasurementV2(database, retentionPolicy, name string) error {
+	s.mu.RLock()
+	if s.databases[database].hasMultipleIndexTypes() {
+		s.mu.RUnlock()
+		return ErrMultipleIndexTypes
+	}
+	shards := s.filterShards(byDatabaseAndRetionPolicy(database, retentionPolicy))
+	epochs := s.epochsForShards(shards)
+	s.mu.RUnlock()
+
+	// Limit to 1 delete for each shard since expanding the measurement into the list
+	// of series keys can be very memory intensive if run concurrently.
+	limit := limiter.NewFixed(1)
+	return s.walkShards(shards, func(sh *Shard) error {
+		limit.Take()
+		defer limit.Release()
+
+		// install our guard and wait for any prior deletes to finish. the
+		// guard ensures future deletes that could conflict wait for us.
+		guard := newGuard(influxql.MinTime, influxql.MaxTime, []string{name}, nil)
+		waiter := epochs[sh.id].WaitDelete(guard)
+		waiter.Wait()
+		defer waiter.Done()
+
+		return sh.DeleteMeasurement([]byte(name))
+	})
+}
+
 // filterShards returns a slice of shards where fn returns true
 // for the shard. If the provided predicate is nil then all shards are returned.
 // filterShards should be called under a lock.
@@ -997,7 +1025,7 @@ func byDatabase(name string) func(sh *Shard) bool {
 	}
 }
 
-func byDatabaseAndRpName(dbName, rpName string) func(sh *Shard) bool {
+func byDatabaseAndRetionPolicy(dbName, rpName string) func(sh *Shard) bool {
 	return func(sh *Shard) bool {
 		if sh.database != dbName {
 			return false
@@ -1498,7 +1526,7 @@ func (s *Store) MeasurementNames(ctx context.Context, auth query.FineAuthorizer,
 
 func (s *Store) MeasurementNamesV2(ctx context.Context, auth query.FineAuthorizer, database string, rpName string, cond influxql.Expr) ([][]byte, error) {
 	s.mu.RLock()
-	shards := s.filterShards(byDatabaseAndRpName(database, rpName))
+	shards := s.filterShards(byDatabaseAndRetionPolicy(database, rpName))
 	s.mu.RUnlock()
 
 	sfile := s.seriesFile(database)

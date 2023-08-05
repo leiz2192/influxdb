@@ -2575,7 +2575,7 @@ type ShowMeasurementsStatement struct {
 	// Database to query. If blank, use the default database.
 	Database string
 
-	RetentionPolicyName string
+	RetentionPolicy string
 
 	// Measurement name or regex.
 	Source Source
@@ -2645,6 +2645,9 @@ func (s *ShowMeasurementsStatement) DefaultDatabase() string {
 type DropMeasurementStatement struct {
 	// Name of the measurement to be dropped.
 	Name string
+
+	Database        string
+	RetentionPolicy string
 }
 
 // String returns a string representation of the drop measurement statement.

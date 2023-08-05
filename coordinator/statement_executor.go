@@ -353,12 +353,15 @@ func (e *StatementExecutor) executeDropDatabaseStatement(stmt *influxql.DropData
 }
 
 func (e *StatementExecutor) executeDropMeasurementStatement(stmt *influxql.DropMeasurementStatement, database string) error {
+	if stmt.Database != "" {
+		database = stmt.Database
+	}
 	if dbi := e.MetaClient.Database(database); dbi == nil {
 		return query.ErrDatabaseNotFound(database)
 	}
 
 	// Locally drop the measurement
-	return e.TSDBStore.DeleteMeasurement(database, stmt.Name)
+	return e.TSDBStore.DeleteMeasurementV2(database, stmt.RetentionPolicy, stmt.Name)
 }
 
 func (e *StatementExecutor) executeDropSeriesStatement(stmt *influxql.DropSeriesStatement, database string) error {
@@ -719,7 +722,7 @@ func (e *StatementExecutor) executeShowMeasurementsStatement(ctx *query.Executio
 		return ErrDatabaseNameRequired
 	}
 
-	names, err := e.TSDBStore.MeasurementNamesV2(ctx.Context, ctx.Authorizer, q.Database, q.RetentionPolicyName, q.Condition)
+	names, err := e.TSDBStore.MeasurementNamesV2(ctx.Context, ctx.Authorizer, q.Database, q.RetentionPolicy, q.Condition)
 	if err != nil || len(names) == 0 {
 		return ctx.Send(&query.Result{
 			Err: err,
@@ -1376,6 +1379,7 @@ type TSDBStore interface {
 
 	DeleteDatabase(name string) error
 	DeleteMeasurement(database, name string) error
+	DeleteMeasurementV2(database, retentionPolicy, name string) error
 	DeleteRetentionPolicy(database, name string) error
 	DeleteSeries(database string, sources []influxql.Source, condition influxql.Expr) error
 	DeleteShard(id uint64) error

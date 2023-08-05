@@ -1072,7 +1072,7 @@ func (p *Parser) parseShowMeasurementsStatement() (*ShowMeasurementsStatement, e
 	// Parse optional FOR clause.
 	if tok, _, _ := p.ScanIgnoreWhitespace(); tok == FOR {
 		// Parse the database.
-		if stmt.RetentionPolicyName, err = p.ParseIdent(); err != nil {
+		if stmt.RetentionPolicy, err = p.ParseIdent(); err != nil {
 			return nil, err
 		}
 	} else {
@@ -1557,6 +1557,26 @@ func (p *Parser) parseDropMeasurementStatement() (*DropMeasurementStatement, err
 		return nil, err
 	}
 	stmt.Name = lit
+
+	// Parse optional ON clause.
+	if tok, _, _ := p.ScanIgnoreWhitespace(); tok == ON {
+		// Parse the database.
+		if stmt.Database, err = p.ParseIdent(); err != nil {
+			return nil, err
+		}
+	} else {
+		p.Unscan()
+	}
+
+	// Parse optional FOR clause.
+	if tok, _, _ := p.ScanIgnoreWhitespace(); tok == FOR {
+		// Parse the database.
+		if stmt.RetentionPolicy, err = p.ParseIdent(); err != nil {
+			return nil, err
+		}
+	} else {
+		p.Unscan()
+	}
 
 	return stmt, nil
 }
