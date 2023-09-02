@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -21,6 +20,7 @@ import (
 	"github.com/influxdata/influxdb/pkg/estimator"
 	"github.com/influxdata/influxdb/pkg/estimator/hll"
 	"github.com/influxdata/influxdb/pkg/limiter"
+	"github.com/influxdata/influxdb/pool"
 	"github.com/influxdata/influxdb/query"
 	"github.com/influxdata/influxql"
 	"go.uber.org/zap"
@@ -36,7 +36,7 @@ var (
 	ErrShardDeletion = errors.New("shard is being deleted")
 	// ErrMultipleIndexTypes is returned when trying to do deletes on a database with
 	// multiple index types.
-	ErrMultipleIndexTypes = errors.New("cannot delete data. DB contains shards using both inmem and tsi1 indexes. Please convert all shards to use the same index type to delete data.")
+	ErrMultipleIndexTypes = errors.New("cannot delete data. DB contains shards using both inmem and tsi1 indexes. Please convert all shards to use the same index type to delete data")
 )
 
 // Statistics gathered by the store.
@@ -294,7 +294,7 @@ func (s *Store) loadShards() error {
 	var n int
 
 	// Determine how many shards we need to open by checking the store path.
-	dbDirs, err := ioutil.ReadDir(s.path)
+	dbDirs, err := os.ReadDir(s.path)
 	if err != nil {
 		return err
 	}
@@ -324,7 +324,7 @@ func (s *Store) loadShards() error {
 		}
 
 		// Load each retention policy within the database directory.
-		rpDirs, err := ioutil.ReadDir(dbPath)
+		rpDirs, err := os.ReadDir(dbPath)
 		if err != nil {
 			return err
 		}
@@ -346,7 +346,7 @@ func (s *Store) loadShards() error {
 				continue
 			}
 
-			shardDirs, err := ioutil.ReadDir(rpPath)
+			shardDirs, err := os.ReadDir(rpPath)
 			if err != nil {
 				return err
 			}
@@ -359,58 +359,60 @@ func (s *Store) loadShards() error {
 				}
 
 				n++
-				go func(db, rp, sh string) {
-					t.Take()
-					defer t.Release()
+				pool.Submit(func(db, rp, sh string) func() {
+					return func() {
+						t.Take()
+						defer t.Release()
 
-					start := time.Now()
-					path := filepath.Join(s.path, db, rp, sh)
-					walPath := filepath.Join(s.EngineOptions.Config.WALDir, db, rp, sh)
+						start := time.Now()
+						path := filepath.Join(s.path, db, rp, sh)
+						walPath := filepath.Join(s.EngineOptions.Config.WALDir, db, rp, sh)
 
-					// Shard file names are numeric shardIDs
-					shardID, err := strconv.ParseUint(sh, 10, 64)
-					if err != nil {
-						log.Info("invalid shard ID found at path", zap.String("path", path))
-						resC <- &res{err: fmt.Errorf("%s is not a valid ID. Skipping shard.", sh)}
-						return
+						// Shard file names are numeric shardIDs
+						shardID, err := strconv.ParseUint(sh, 10, 64)
+						if err != nil {
+							log.Info("invalid shard ID found at path", zap.String("path", path))
+							resC <- &res{err: fmt.Errorf("%s is not a valid ID. Skipping shard", sh)}
+							return
+						}
+
+						if s.EngineOptions.ShardFilter != nil && !s.EngineOptions.ShardFilter(db, rp, shardID) {
+							log.Info("skipping shard", zap.String("path", path), logger.Shard(shardID))
+							resC <- &res{}
+							return
+						}
+
+						// Copy options and assign shared index.
+						opt := s.EngineOptions
+						opt.InmemIndex = idx
+
+						// Provide an implementation of the ShardIDSets
+						opt.SeriesIDSets = shardSet{store: s, db: db}
+
+						// Existing shards should continue to use inmem index.
+						if _, err := os.Stat(filepath.Join(path, "index")); os.IsNotExist(err) {
+							opt.IndexVersion = InmemIndexName
+						}
+
+						// Open engine.
+						shard := NewShard(shardID, path, walPath, sfile, opt)
+
+						// Disable compactions, writes and queries until all shards are loaded
+						shard.EnableOnOpen = false
+						shard.CompactionDisabled = s.EngineOptions.CompactionDisabled
+						shard.WithLogger(s.baseLogger)
+
+						err = shard.Open()
+						if err != nil {
+							log.Info("Failed to open shard", logger.Shard(shardID), zap.Error(err))
+							resC <- &res{err: fmt.Errorf("failed to open shard: %d: %s", shardID, err)}
+							return
+						}
+
+						resC <- &res{s: shard}
+						log.Info("Opened shard", zap.String("index_version", shard.IndexType()), zap.String("path", path), zap.Duration("duration", time.Since(start)))
 					}
-
-					if s.EngineOptions.ShardFilter != nil && !s.EngineOptions.ShardFilter(db, rp, shardID) {
-						log.Info("skipping shard", zap.String("path", path), logger.Shard(shardID))
-						resC <- &res{}
-						return
-					}
-
-					// Copy options and assign shared index.
-					opt := s.EngineOptions
-					opt.InmemIndex = idx
-
-					// Provide an implementation of the ShardIDSets
-					opt.SeriesIDSets = shardSet{store: s, db: db}
-
-					// Existing shards should continue to use inmem index.
-					if _, err := os.Stat(filepath.Join(path, "index")); os.IsNotExist(err) {
-						opt.IndexVersion = InmemIndexName
-					}
-
-					// Open engine.
-					shard := NewShard(shardID, path, walPath, sfile, opt)
-
-					// Disable compactions, writes and queries until all shards are loaded
-					shard.EnableOnOpen = false
-					shard.CompactionDisabled = s.EngineOptions.CompactionDisabled
-					shard.WithLogger(s.baseLogger)
-
-					err = shard.Open()
-					if err != nil {
-						log.Info("Failed to open shard", logger.Shard(shardID), zap.Error(err))
-						resC <- &res{err: fmt.Errorf("Failed to open shard: %d: %s", shardID, err)}
-						return
-					}
-
-					resC <- &res{s: shard}
-					log.Info("Opened shard", zap.String("index_version", shard.IndexType()), zap.String("path", path), zap.Duration("duration", time.Since(start)))
-				}(db.Name(), rp.Name(), sh.Name())
+				}(db.Name(), rp.Name(), sh.Name()))
 			}
 		}
 	}

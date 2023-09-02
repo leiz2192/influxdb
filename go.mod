@@ -32,6 +32,7 @@ require (
 	github.com/mattn/go-isatty v0.0.4
 	github.com/mschoch/smat v0.0.0-20160514031455-90eadee771ae // indirect
 	github.com/opentracing/opentracing-go v1.0.3-0.20180606204148-bd9c31933947
+	github.com/panjf2000/ants/v2 v2.8.1
 	github.com/paulbellamy/ratecounter v0.2.0
 	github.com/peterh/liner v1.0.1-0.20180619022028-8c1271fcf47f
 	github.com/philhofer/fwd v1.0.0 // indirect
@@ -41,13 +42,13 @@ require (
 	github.com/segmentio/kafka-go v0.2.0 // indirect
 	github.com/smartystreets/goconvey v1.6.4 // indirect
 	github.com/spf13/cast v1.3.0
-	github.com/stretchr/testify v1.7.0
+	github.com/stretchr/testify v1.8.1
 	github.com/tinylib/msgp v1.0.2
 	github.com/willf/bitset v1.1.3 // indirect
 	github.com/xlab/treeprint v0.0.0-20180616005107-d6fb6747feb6
 	go.uber.org/zap v1.9.1
 	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2
-	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
+	golang.org/x/sync v0.1.0
 	golang.org/x/sys v0.0.0-20201119102817-f84b799fce68
 	golang.org/x/text v0.3.3
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
@@ -56,6 +57,4 @@ require (
 	google.golang.org/grpc v1.26.0
 )
 
-replace (
-	github.com/influxdata/influxql => ./dev/github.com/influxdata/influxql
-)
+replace github.com/influxdata/influxql => ./dev/github.com/influxdata/influxql
