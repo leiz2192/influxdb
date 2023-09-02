@@ -515,7 +515,6 @@ const (
 // will store points written stats into the int64 pointer associated with
 // StatPointsWritten and the number of values written in the int64 pointer
 // stored in the StatValuesWritten context values.
-//
 func (s *Shard) WritePointsWithContext(ctx context.Context, points []models.Point) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -1200,20 +1199,21 @@ func (s *Shard) TagKeyCardinality(name, key []byte) int {
 }
 
 // Digest returns a digest of the shard.
-func (s *Shard) Digest() (io.ReadCloser, int64, error, string) {
+func (s *Shard) Digest() (io.ReadCloser, int64, error) {
 	engine, err := s.Engine()
 	if err != nil {
-		return nil, 0, err, ""
+		return nil, 0, err
 	}
 
 	// Make sure the shard is idle/cold. (No use creating a digest of a
 	// hot shard that is rapidly changing.)
 	if isIdle, reason := engine.IsIdle(); !isIdle {
-		return nil, 0, ErrShardNotIdle, reason
+		s.logger.Error("shard not idle", zap.String("reason", reason), zap.String("path", s.path))
+		return nil, 0, ErrShardNotIdle
 	}
 
 	readCloser, size, err := engine.Digest()
-	return readCloser, size, err, ""
+	return readCloser, size, err
 }
 
 // engine safely (under an RLock) returns a reference to the shard's Engine, or

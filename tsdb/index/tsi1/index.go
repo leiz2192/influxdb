@@ -17,6 +17,7 @@ import (
 	"github.com/influxdata/influxdb/models"
 	"github.com/influxdata/influxdb/pkg/estimator"
 	"github.com/influxdata/influxdb/pkg/estimator/hll"
+	"github.com/influxdata/influxdb/pkg/pool"
 	"github.com/influxdata/influxdb/pkg/slices"
 	"github.com/influxdata/influxdb/tsdb"
 	"github.com/influxdata/influxql"
@@ -53,7 +54,6 @@ func init() {
 //
 // NOTE: Currently, this must not be change once a database is created. Further,
 // it must also be a power of 2.
-//
 var DefaultPartitionN uint64 = 8
 
 // An IndexOption is a functional option for changing the configuration of
@@ -276,16 +276,18 @@ func (i *Index) Open() error {
 	// Run fn on each partition using a fixed number of goroutines.
 	var pidx uint32 // Index of maximum Partition being worked on.
 	for k := 0; k < n; k++ {
-		go func(k int) {
-			for {
-				idx := int(atomic.AddUint32(&pidx, 1) - 1) // Get next partition to work on.
-				if idx >= partitionN {
-					return // No more work.
+		pool.Submit(func(k int) func() {
+			return func() {
+				for {
+					idx := int(atomic.AddUint32(&pidx, 1) - 1) // Get next partition to work on.
+					if idx >= partitionN {
+						return // No more work.
+					}
+					err := i.partitions[idx].Open()
+					errC <- err
 				}
-				err := i.partitions[idx].Open()
-				errC <- err
 			}
-		}(k)
+		}(k))
 	}
 
 	// Check for error

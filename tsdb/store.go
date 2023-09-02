@@ -20,7 +20,7 @@ import (
 	"github.com/influxdata/influxdb/pkg/estimator"
 	"github.com/influxdata/influxdb/pkg/estimator/hll"
 	"github.com/influxdata/influxdb/pkg/limiter"
-	"github.com/influxdata/influxdb/pool"
+	"github.com/influxdata/influxdb/pkg/pool"
 	"github.com/influxdata/influxdb/query"
 	"github.com/influxdata/influxql"
 	"go.uber.org/zap"
@@ -595,7 +595,7 @@ func (s *Store) ShardDigest(id uint64) (io.ReadCloser, int64, error) {
 		return nil, 0, ErrShardNotFound
 	}
 
-	readCloser, size, err, _ := sh.Digest()
+	readCloser, size, err := sh.Digest()
 	return readCloser, size, err
 }
 
