@@ -1055,14 +1055,16 @@ func (s *Store) walkShards(shards []*Shard, fn func(sh *Shard) error) error {
 	for _, sh := range shards {
 		n++
 
-		go func(sh *Shard) {
-			if err := fn(sh); err != nil {
-				resC <- res{err: fmt.Errorf("shard %d: %s", sh.id, err)}
-				return
-			}
+		pool.Submit(func(sh *Shard) func() {
+			return func() {
+				if err := fn(sh); err != nil {
+					resC <- res{err: fmt.Errorf("shard %d: %s", sh.id, err)}
+					return
+				}
 
-			resC <- res{}
-		}(sh)
+				resC <- res{}
+			}
+		}(sh))
 	}
 
 	var err error

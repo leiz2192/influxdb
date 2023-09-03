@@ -11,6 +11,7 @@ import (
 
 	"github.com/influxdata/influxdb"
 	"github.com/influxdata/influxdb/models"
+	"github.com/influxdata/influxdb/pkg/pool"
 	"github.com/influxdata/influxdb/services/meta"
 	"github.com/influxdata/influxdb/tsdb"
 	"go.uber.org/zap"
@@ -269,8 +270,8 @@ func (l sgList) Covers(t time.Time) bool {
 // to start time. Therefore, if there are multiple shard groups that match
 // this point's time they will be preferred in this order:
 //
-//  - a shard group with the earliest end time;
-//  - (assuming identical end times) the shard group with the earliest start time.
+//   - a shard group with the earliest end time;
+//   - (assuming identical end times) the shard group with the earliest start time.
 func (l sgList) ShardGroupAt(t time.Time) *meta.ShardGroupInfo {
 	if l.items.Len() == 0 {
 		return nil
@@ -349,7 +350,6 @@ const (
 )
 
 // WritePointsWithContext writes data to the underlying storage. consitencyLevel and user are only used for clustered scenarios.
-//
 func (w *PointsWriter) WritePointsWithContext(ctx context.Context, database, retentionPolicy string, consistencyLevel models.ConsistencyLevel, user meta.User, points []models.Point) error {
 	return w.WritePointsPrivilegedWithContext(ctx, database, retentionPolicy, consistencyLevel, points)
 }
@@ -364,7 +364,6 @@ func (w *PointsWriter) WritePointsPrivileged(database, retentionPolicy string, c
 // If a request for StatPointsWritten or StatValuesWritten of type ContextKey is
 // sent via context values, this stores the total points and fields written in
 // the memory pointed to by the associated wth the int64 pointers.
-//
 func (w *PointsWriter) WritePointsPrivilegedWithContext(ctx context.Context, database, retentionPolicy string, consistencyLevel models.ConsistencyLevel, points []models.Point) error {
 	atomic.AddInt64(&w.stats.WriteReq, 1)
 	atomic.AddInt64(&w.stats.PointWriteReq, int64(len(points)))
@@ -385,26 +384,28 @@ func (w *PointsWriter) WritePointsPrivilegedWithContext(ctx context.Context, dat
 	// Write each shard in it's own goroutine and return as soon as one fails.
 	ch := make(chan error, len(shardMappings.Points))
 	for shardID, points := range shardMappings.Points {
-		go func(ctx context.Context, shard *meta.ShardInfo, database, retentionPolicy string, points []models.Point) {
-			var numPoints, numValues int64
-			ctx = context.WithValue(ctx, tsdb.StatPointsWritten, &numPoints)
-			ctx = context.WithValue(ctx, tsdb.StatValuesWritten, &numValues)
+		pool.Submit(func(ctx context.Context, shard *meta.ShardInfo, database, retentionPolicy string, points []models.Point) func() {
+			return func() {
+				var numPoints, numValues int64
+				ctx = context.WithValue(ctx, tsdb.StatPointsWritten, &numPoints)
+				ctx = context.WithValue(ctx, tsdb.StatValuesWritten, &numValues)
 
-			err := w.writeToShardWithContext(ctx, shard, database, retentionPolicy, points)
-			if err == tsdb.ErrShardDeletion {
-				err = tsdb.PartialWriteError{Reason: fmt.Sprintf("shard %d is pending deletion", shard.ID), Dropped: len(points)}
+				err := w.writeToShardWithContext(ctx, shard, database, retentionPolicy, points)
+				if err == tsdb.ErrShardDeletion {
+					err = tsdb.PartialWriteError{Reason: fmt.Sprintf("shard %d is pending deletion", shard.ID), Dropped: len(points)}
+				}
+
+				if v, ok := ctx.Value(StatPointsWritten).(*int64); ok {
+					atomic.AddInt64(v, numPoints)
+				}
+
+				if v, ok := ctx.Value(StatValuesWritten).(*int64); ok {
+					atomic.AddInt64(v, numValues)
+				}
+
+				ch <- err
 			}
-
-			if v, ok := ctx.Value(StatPointsWritten).(*int64); ok {
-				atomic.AddInt64(v, numPoints)
-			}
-
-			if v, ok := ctx.Value(StatValuesWritten).(*int64); ok {
-				atomic.AddInt64(v, numValues)
-			}
-
-			ch <- err
-		}(ctx, shardMappings.Shards[shardID], database, retentionPolicy, points)
+		}(ctx, shardMappings.Shards[shardID], database, retentionPolicy, points))
 	}
 
 	// Send points to subscriptions if possible.
@@ -451,11 +452,6 @@ func (w *PointsWriter) WritePointsPrivilegedWithContext(ctx context.Context, dat
 		}
 	}
 	return err
-}
-
-// writeToShards writes points to a shard.
-func (w *PointsWriter) writeToShard(shard *meta.ShardInfo, database, retentionPolicy string, points []models.Point) error {
-	return w.writeToShardWithContext(context.Background(), shard, database, retentionPolicy, points)
 }
 
 func (w *PointsWriter) writeToShardWithContext(ctx context.Context, shard *meta.ShardInfo, database, retentionPolicy string, points []models.Point) error {

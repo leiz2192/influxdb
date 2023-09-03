@@ -2,6 +2,7 @@ package pool
 
 import (
 	"errors"
+	"log/slog"
 
 	"github.com/panjf2000/ants/v2"
 )
@@ -19,5 +20,6 @@ func init() {
 }
 
 func Submit(task func()) error {
+	slog.Info("pool submit task", "cap", defaultPool.Cap(), "waiting", defaultPool.Waiting(), "running", defaultPool.Running())
 	return defaultPool.Submit(task)
 }
