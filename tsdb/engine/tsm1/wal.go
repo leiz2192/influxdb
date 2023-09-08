@@ -259,7 +259,7 @@ func (l *WAL) scheduleSync() {
 	}
 
 	// Fsync the wal and notify all pending waiters
-	go func() {
+	pool.Submit(func() {
 		var timerCh <-chan time.Time
 
 		// time.NewTicker requires a > 0 delay, since 0 indicates no delay, use a closed
@@ -292,7 +292,7 @@ func (l *WAL) scheduleSync() {
 				return
 			}
 		}
-	}()
+	})
 }
 
 // sync fsyncs the current wal segments and notifies any waiters.  Callers must ensure
