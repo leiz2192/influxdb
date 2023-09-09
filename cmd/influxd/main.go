@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"math/rand"
 	"os"
 	"os/signal"
@@ -36,6 +37,8 @@ func init() {
 	if branch == "" {
 		branch = "unknown"
 	}
+
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 }
 
 func main() {

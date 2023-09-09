@@ -259,6 +259,10 @@ func (s *Server) appendSnapshotterService() {
 	s.SnapshotterService = srv
 }
 
+func (s *Server) ReloadConfig(c *Config) {
+	s.config = c
+}
+
 // SetLogOutput sets the logger used for all messages. It must not be called
 // after the Open method has been called.
 func (s *Server) SetLogOutput(w io.Writer) {

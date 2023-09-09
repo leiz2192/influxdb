@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/influxdata/influxdb/logger"
 	"go.uber.org/zap"
 )
@@ -38,8 +39,8 @@ type Command struct {
 	BuildTime string
 
 	closing chan struct{}
-	pidfile string
 	Closed  chan struct{}
+	pidfile string
 
 	Stdin  io.Reader
 	Stdout io.Writer
@@ -47,6 +48,8 @@ type Command struct {
 	Logger *zap.Logger
 
 	Server *Server
+
+	watcher *fsnotify.Watcher
 
 	// How to get environment variables. Normally set to os.Getenv, except for tests.
 	Getenv func(string) string
@@ -161,6 +164,7 @@ func (cmd *Command) Close() error {
 	defer close(cmd.Closed)
 	defer cmd.removePIDFile()
 	close(cmd.closing)
+	cmd.watcher.Close()
 	if cmd.Server != nil {
 		return cmd.Server.Close()
 	}
@@ -241,6 +245,47 @@ func (cmd *Command) ParseConfig(path string) (*Config, error) {
 		return nil, err
 	}
 
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, err
+	}
+	cmd.watcher = watcher
+
+	go func() {
+		lastWriteTime := time.Time{}
+		for {
+			select {
+			case event, ok := <-cmd.watcher.Events:
+				if !ok {
+					return
+				}
+				log.Printf("%s %s\n", event.Name, event.Op)
+				if !event.Has(fsnotify.Write) {
+					continue
+				}
+				if time.Since(lastWriteTime) < 3*time.Second {
+					continue
+				}
+				lastWriteTime = time.Now()
+				c := NewConfig()
+				if err := c.FromTomlFile(event.Name); err != nil {
+					continue
+				}
+				cmd.Server.ReloadConfig(c)
+			case err, ok := <-cmd.watcher.Errors:
+				if !ok {
+					return
+				}
+				log.Println("error:", err)
+			case <-cmd.closing:
+				return
+			}
+		}
+	}()
+	if err := cmd.watcher.Add(path); err != nil {
+		return nil, err
+	}
+
 	return config, nil
 }
 
@@ -272,11 +317,11 @@ type Options struct {
 
 // GetConfigPath returns the config path from the options.
 // It will return a path by searching in this order:
-//   1. The CLI option in ConfigPath
-//   2. The environment variable INFLUXDB_CONFIG_PATH
-//   3. The first influxdb.conf file on the path:
-//        - ~/.influxdb
-//        - /etc/influxdb
+//  1. The CLI option in ConfigPath
+//  2. The environment variable INFLUXDB_CONFIG_PATH
+//  3. The first influxdb.conf file on the path:
+//     - ~/.influxdb
+//     - /etc/influxdb
 func (opt *Options) GetConfigPath() string {
 	if opt.ConfigPath != "" {
 		if opt.ConfigPath == os.DevNull {

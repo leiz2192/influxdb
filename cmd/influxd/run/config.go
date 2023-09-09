@@ -2,7 +2,6 @@ package run
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/user"
@@ -11,6 +10,9 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"golang.org/x/text/encoding/unicode"
+	"golang.org/x/text/transform"
+
 	"github.com/influxdata/influxdb/coordinator"
 	"github.com/influxdata/influxdb/logger"
 	"github.com/influxdata/influxdb/monitor"
@@ -28,8 +30,6 @@ import (
 	"github.com/influxdata/influxdb/services/udp"
 	itoml "github.com/influxdata/influxdb/toml"
 	"github.com/influxdata/influxdb/tsdb"
-	"golang.org/x/text/encoding/unicode"
-	"golang.org/x/text/transform"
 )
 
 const (
@@ -115,7 +115,7 @@ func NewDemoConfig() (*Config, error) {
 
 // FromTomlFile loads the config from a TOML file.
 func (c *Config) FromTomlFile(fpath string) error {
-	bs, err := ioutil.ReadFile(fpath)
+	bs, err := os.ReadFile(fpath)
 	if err != nil {
 		return err
 	}

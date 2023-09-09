@@ -75,6 +75,9 @@ func (s *TSDBStoreMock) DeleteDatabase(name string) error {
 func (s *TSDBStoreMock) DeleteMeasurement(database string, name string) error {
 	return s.DeleteMeasurementFn(database, name)
 }
+func (s *TSDBStoreMock) DeleteMeasurementV2(database string, rp string, name string) error {
+	return s.DeleteMeasurementFn(database, name)
+}
 func (s *TSDBStoreMock) DeleteRetentionPolicy(database string, name string) error {
 	return s.DeleteRetentionPolicyFn(database, name)
 }
@@ -94,6 +97,9 @@ func (s *TSDBStoreMock) ImportShard(id uint64, r io.Reader) error {
 	return s.ImportShardFn(id, r)
 }
 func (s *TSDBStoreMock) MeasurementNames(ctx context.Context, auth query.FineAuthorizer, database string, cond influxql.Expr) ([][]byte, error) {
+	return s.MeasurementNamesFn(auth, database, cond)
+}
+func (s *TSDBStoreMock) MeasurementNamesV2(ctx context.Context, auth query.FineAuthorizer, database string, rp string, cond influxql.Expr) ([][]byte, error) {
 	return s.MeasurementNamesFn(auth, database, cond)
 }
 func (s *TSDBStoreMock) MeasurementSeriesCounts(database string) (measuments int, series int) {
