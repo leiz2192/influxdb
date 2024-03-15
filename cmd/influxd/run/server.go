@@ -1,7 +1,6 @@
 package run
 
 import (
-	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -12,6 +11,8 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/influxdata/influxdb"
 	"github.com/influxdata/influxdb/coordinator"
@@ -35,20 +36,12 @@ import (
 	"github.com/influxdata/influxdb/storage/reads"
 	"github.com/influxdata/influxdb/tcp"
 	"github.com/influxdata/influxdb/tsdb"
-	client "github.com/influxdata/usage-client/v1"
-	"go.uber.org/zap"
 
 	// Initialize the engine package
 	_ "github.com/influxdata/influxdb/tsdb/engine"
 	// Initialize the index package
 	_ "github.com/influxdata/influxdb/tsdb/index"
 )
-
-var startTime time.Time
-
-func init() {
-	startTime = time.Now().UTC()
-}
 
 // BuildInfo represents the build details for the server code.
 type BuildInfo struct {
@@ -85,9 +78,6 @@ type Server struct {
 	SnapshotterService *snapshotter.Service
 
 	Monitor *monitor.Monitor
-
-	// Server reporting and registration
-	reportingDisabled bool
 
 	// Profiling
 	CPUProfile            string
@@ -175,8 +165,6 @@ func NewServer(c *Config, buildInfo *BuildInfo) (*Server, error) {
 		Logger: logger.New(os.Stderr),
 
 		MetaClient: meta.NewClient(c.Meta),
-
-		reportingDisabled: c.ReportingDisabled,
 
 		httpAPIAddr: c.HTTPD.BindAddress,
 		httpUseTLS:  c.HTTPD.HTTPSEnabled,
@@ -467,11 +455,6 @@ func (s *Server) Open() error {
 		}
 	}
 
-	// Start the reporting service, if not disabled.
-	if !s.reportingDisabled {
-		go s.startServerReporting()
-	}
-
 	return nil
 }
 
@@ -515,76 +498,6 @@ func (s *Server) Close() error {
 
 	close(s.closing)
 	return nil
-}
-
-// startServerReporting starts periodic server reporting.
-func (s *Server) startServerReporting() {
-	s.reportServer()
-
-	ticker := time.NewTicker(24 * time.Hour)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-s.closing:
-			return
-		case <-ticker.C:
-			s.reportServer()
-		}
-	}
-}
-
-// reportServer reports usage statistics about the system.
-func (s *Server) reportServer() {
-	dbs := s.MetaClient.Databases()
-	numDatabases := len(dbs)
-
-	var (
-		numMeasurements int64
-		numSeries       int64
-	)
-
-	for _, db := range dbs {
-		name := db.Name
-		// Use the context.Background() to avoid timing out on this.
-		n, err := s.TSDBStore.SeriesCardinality(context.Background(), name)
-		if err != nil {
-			s.Logger.Error(fmt.Sprintf("Unable to get series cardinality for database %s: %v", name, err))
-		} else {
-			numSeries += n
-		}
-
-		// Use the context.Background() to avoid timing out on this.
-		n, err = s.TSDBStore.MeasurementsCardinality(context.Background(), name)
-		if err != nil {
-			s.Logger.Error(fmt.Sprintf("Unable to get measurement cardinality for database %s: %v", name, err))
-		} else {
-			numMeasurements += n
-		}
-	}
-
-	clusterID := s.MetaClient.ClusterID()
-	cl := client.New("")
-	usage := client.Usage{
-		Product: "influxdb",
-		Data: []client.UsageData{
-			{
-				Values: client.Values{
-					"os":               runtime.GOOS,
-					"arch":             runtime.GOARCH,
-					"version":          s.buildInfo.Version,
-					"cluster_id":       fmt.Sprintf("%v", clusterID),
-					"num_series":       numSeries,
-					"num_measurements": numMeasurements,
-					"num_databases":    numDatabases,
-					"uptime":           time.Since(startTime).Seconds(),
-				},
-			},
-		},
-	}
-
-	s.Logger.Info("Sending usage statistics to usage.influxdata.com")
-
-	go cl.Save(usage)
 }
 
 // Service represents a service attached to the server.

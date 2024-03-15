@@ -42,10 +42,11 @@ type Command struct {
 	Closed  chan struct{}
 	pidfile string
 
-	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
-	Logger *zap.Logger
+
+	Logger      *zap.Logger
+	atomicLevel zap.AtomicLevel
 
 	Server *Server
 
@@ -60,10 +61,11 @@ func NewCommand() *Command {
 	return &Command{
 		closing: make(chan struct{}),
 		Closed:  make(chan struct{}),
-		Stdin:   os.Stdin,
 		Stdout:  os.Stdout,
 		Stderr:  os.Stderr,
-		Logger:  zap.NewNop(),
+
+		Logger:      zap.NewNop(),
+		atomicLevel: zap.NewAtomicLevel(),
 	}
 }
 
@@ -91,16 +93,18 @@ func (cmd *Command) Run(args ...string) error {
 	}
 
 	var logErr error
-	if cmd.Logger, logErr = config.Logging.New(cmd.Stderr); logErr != nil {
-		// assign the default logger
-		cmd.Logger = logger.New(cmd.Stderr)
+	if cmd.Logger, logErr = config.Logging.NewLogger(&cmd.atomicLevel); logErr != nil {
+		return fmt.Errorf("unable to configure logger: %w", logErr)
 	}
 
 	// Attempt to run pprof on :6060 before startup if debug pprof enabled.
 	if config.HTTPD.DebugPprofEnabled {
 		runtime.SetBlockProfileRate(int(1 * time.Second))
 		runtime.SetMutexProfileFraction(1)
-		go func() { http.ListenAndServe("localhost:6060", nil) }()
+		go func() {
+			http.HandleFunc("/log/level", cmd.atomicLevel.ServeHTTP)
+			http.ListenAndServe("localhost:6060", nil)
+		}()
 	}
 
 	// Print sweet InfluxDB logo.
@@ -116,17 +120,6 @@ func (cmd *Command) Run(args ...string) error {
 	cmd.Logger.Info("Go runtime",
 		zap.String("version", runtime.Version()),
 		zap.Int("maxprocs", runtime.GOMAXPROCS(0)))
-
-	// If there was an error on startup when creating the logger, output it now.
-	if logErr != nil {
-		cmd.Logger.Error("Unable to configure logger", zap.Error(logErr))
-	}
-
-	// Write the PID file.
-	if err := cmd.writePIDFile(options.PIDFile); err != nil {
-		return fmt.Errorf("write pid file: %s", err)
-	}
-	cmd.pidfile = options.PIDFile
 
 	if config.HTTPD.PprofEnabled {
 		// Turn on block and mutex profiling.
@@ -152,6 +145,12 @@ func (cmd *Command) Run(args ...string) error {
 		return fmt.Errorf("open server: %s", err)
 	}
 	cmd.Server = s
+
+	// Write the PID file.
+	if err := cmd.writePIDFile(options.PIDFile); err != nil {
+		return fmt.Errorf("write pid file: %s", err)
+	}
+	cmd.pidfile = options.PIDFile
 
 	// Begin monitoring the server's error channel.
 	go cmd.monitorServerErrors()

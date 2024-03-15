@@ -59,6 +59,7 @@ require (
 	golang.org/x/tools v0.7.0
 	google.golang.org/api v0.122.0 // indirect
 	google.golang.org/grpc v1.55.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 

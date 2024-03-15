@@ -9,6 +9,7 @@ import (
 	isatty "github.com/mattn/go-isatty"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // TimeFormat represents the logger time format.
@@ -49,6 +50,30 @@ func (c *Config) New(defaultOutput io.Writer) (*zap.Logger, error) {
 		zapcore.Lock(zapcore.AddSync(w)),
 		c.Level,
 	), zap.Fields(zap.String("log_id", nextID()))), nil
+}
+
+func (c *Config) NewLogger(atomicLevel *zap.AtomicLevel) (*zap.Logger, error) {
+	maxSize := int(c.MaxSize)
+	if maxSize < 1024*1024 {
+		maxSize = 1
+	} else {
+		maxSize = maxSize / 1024 * 1024
+	}
+
+	lumberJackLogger := &lumberjack.Logger{
+		Filename:   c.FileName,
+		MaxSize:    maxSize,
+		MaxBackups: c.MaxBackups,
+		Compress:   true,
+	}
+
+	encoder, err := newEncoder(c.Format)
+	if err != nil {
+		return nil, err
+	}
+	atomicLevel.SetLevel(c.Level)
+	core := zapcore.NewCore(encoder, zapcore.AddSync(lumberJackLogger), atomicLevel)
+	return zap.New(core, zap.AddCaller(), zap.Development()), nil
 }
 
 func newEncoder(format string) (zapcore.Encoder, error) {
