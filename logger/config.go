@@ -21,6 +21,7 @@ func NewConfig() Config {
 	return Config{
 		FileName:   "./influxdb.log",
 		Format:     "json",
+		MaxSize:    toml.Size(64 * 1024 * 1024),
 		MaxBackups: 7,
 		Level:      zapcore.InfoLevel,
 	}

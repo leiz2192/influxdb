@@ -15,8 +15,9 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/influxdata/influxdb/logger"
 	"go.uber.org/zap"
+
+	"github.com/influxdata/influxdb/logger"
 )
 
 const logo = `
@@ -120,6 +121,7 @@ func (cmd *Command) Run(args ...string) error {
 	cmd.Logger.Info("Go runtime",
 		zap.String("version", runtime.Version()),
 		zap.Int("maxprocs", runtime.GOMAXPROCS(0)))
+	log.Printf("InfluxDB starting, pid: %d\n", os.Getpid())
 
 	if config.HTTPD.PprofEnabled {
 		// Turn on block and mutex profiling.
@@ -145,6 +147,10 @@ func (cmd *Command) Run(args ...string) error {
 		return fmt.Errorf("open server: %s", err)
 	}
 	cmd.Server = s
+
+	if err := config.DumpToml(options.ConfigPath); err != nil {
+		return err
+	}
 
 	// Write the PID file.
 	if err := cmd.writePIDFile(options.PIDFile); err != nil {

@@ -96,6 +96,22 @@ func (s *Size) UnmarshalText(text []byte) error {
 	return nil
 }
 
+func (s Size) MarshalText() (text []byte, err error) {
+	suffix := ""
+	mult := s
+	if s > (1 << 30) {
+		suffix = "G"
+		mult = s / (1 << 30)
+	} else if s > (1 << 20) {
+		suffix = "M"
+		mult = s / (1 << 20)
+	} else if s > (1 << 10) {
+		suffix = "K"
+		mult = s / (1 << 10)
+	}
+	return []byte(fmt.Sprintf("%d%s", mult, suffix)), nil
+}
+
 type FileMode uint32
 
 func (m *FileMode) UnmarshalText(text []byte) error {

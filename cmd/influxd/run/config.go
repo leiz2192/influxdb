@@ -1,8 +1,10 @@
 package run
 
 import (
+	"bytes"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -55,9 +57,6 @@ type Config struct {
 	UDPInputs      []udp.Config      `toml:"udp"`
 
 	ContinuousQuery continuous_querier.Config `toml:"continuous_queries"`
-
-	// Server reporting
-	ReportingDisabled bool `toml:"reporting-disabled"`
 
 	// BindAddress is the address that all TCP services use (Raft, Snapshot, Cluster, etc.)
 	BindAddress string `toml:"bind-address"`
@@ -147,6 +146,22 @@ func (c *Config) FromToml(input string) error {
 	return err
 }
 
+func (c *Config) DumpToml(outputSuffix string) error {
+	buf := new(bytes.Buffer)
+	toml.NewEncoder(buf).Encode(c)
+
+	file_name := filepath.Join(filepath.Dir(outputSuffix), fmt.Sprintf("dump_%s", filepath.Base(outputSuffix)))
+	f, err := os.Create(file_name)
+	if err != nil {
+		return err
+	}
+	if _, err := buf.WriteTo(f); err != nil {
+		return err
+	}
+	slog.Info("dump config to file: " + file_name)
+	return nil
+}
+
 // Validate returns an error if the config is invalid.
 func (c *Config) Validate() error {
 	if err := c.Meta.Validate(); err != nil {
@@ -204,8 +219,7 @@ func (c *Config) ApplyEnvOverrides(getenv func(string) string) error {
 // Diagnostics returns a diagnostics representation of Config.
 func (c *Config) Diagnostics() (*diagnostics.Diagnostics, error) {
 	return diagnostics.RowFromMap(map[string]interface{}{
-		"reporting-disabled": c.ReportingDisabled,
-		"bind-address":       c.BindAddress,
+		"bind-address": c.BindAddress,
 	}), nil
 }
 

@@ -20,6 +20,8 @@ func init() {
 }
 
 func Submit(task func()) error {
-	slog.Info("pool submit task", "cap", defaultPool.Cap(), "waiting", defaultPool.Waiting(), "running", defaultPool.Running())
+	if defaultPool.Waiting() > 0 {
+		slog.Info("pool submit task", "cap", defaultPool.Cap(), "waiting", defaultPool.Waiting(), "running", defaultPool.Running())
+	}
 	return defaultPool.Submit(task)
 }
