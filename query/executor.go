@@ -345,16 +345,16 @@ LOOP:
 
 		// Send any other statements to the underlying statement executor.
 		err = e.StatementExecutor.ExecuteStatement(ctx, stmt)
-		if err == ErrQueryInterrupted {
-			// Query was interrupted so retrieve the real interrupt error from
-			// the query task if there is one.
-			if qerr := ctx.Err(); qerr != nil {
-				err = qerr
-			}
-		}
-
 		// Send an error for this result if it failed for some reason.
 		if err != nil {
+			if err == ErrQueryInterrupted {
+				// Query was interrupted so retrieve the real interrupt error from
+				// the query task if there is one.
+				if qerr := ctx.Err(); qerr != nil {
+					err = qerr
+				}
+			}
+
 			if err := ctx.send(&Result{
 				StatementID: i,
 				Err:         err,
@@ -411,9 +411,8 @@ func (e *Executor) recover(query *influxql.Query, results chan *Result) {
 		}
 
 		if willCrash {
-			e.Logger.Error(fmt.Sprintf("\n\n=====\nAll goroutines now follow:"))
-			buf := debug.Stack()
-			e.Logger.Error(fmt.Sprintf("%s", buf))
+			e.Logger.Error("\n\n=====\nAll goroutines now follow:")
+			e.Logger.Error(string(debug.Stack()))
 			os.Exit(1)
 		}
 	}

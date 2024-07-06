@@ -92,6 +92,22 @@ func Shard(id uint64) zapcore.Field {
 	return zap.Uint64(DBShardIDKey, id)
 }
 
+func SkipIfNil(key string, val interface{}) zapcore.Field {
+	skip := false
+	switch val.(type) {
+	case string:
+		skip = val == ""
+	case int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8:
+		skip = val == 0
+	case float32, float64:
+		skip = val == 0.0
+	}
+	if skip {
+		return zap.Skip()
+	}
+	return zap.Any(key, val)
+}
+
 // NewOperation uses the exiting log to create a new logger with context
 // containing a trace id and the operation. Prior to returning, a standardized message
 // is logged indicating the operation has started. The returned function should be

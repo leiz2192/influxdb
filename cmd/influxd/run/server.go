@@ -291,6 +291,10 @@ func (s *Server) appendHTTPDService(c httpd.Config) {
 		srv.Handler.Controller = control.NewController(s.MetaClient, reads.NewReader(ss), authorizer, c.AuthEnabled, s.Logger)
 	}
 
+	if logger, err := s.config.Logging.NewAccessLogger(); err == nil {
+		srv.Handler.AccessLogger = logger
+	}
+
 	s.Services = append(s.Services, srv)
 }
 

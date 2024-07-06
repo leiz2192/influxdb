@@ -60,11 +60,16 @@ func (c *Config) NewLogger(atomicLevel *zap.AtomicLevel) (*zap.Logger, error) {
 		maxSize = maxSize / 1024 * 1024
 	}
 
+	maxBackups := c.MaxBackups
+	if maxBackups < 1 {
+		maxBackups = 1
+	}
+
 	lumberJackLogger := &lumberjack.Logger{
 		Filename:   c.FileName,
 		MaxSize:    maxSize,
-		MaxBackups: c.MaxBackups,
-		Compress:   true,
+		MaxBackups: maxBackups,
+		Compress:   c.Compress,
 	}
 
 	encoder, err := newEncoder(c.Format)
@@ -74,6 +79,46 @@ func (c *Config) NewLogger(atomicLevel *zap.AtomicLevel) (*zap.Logger, error) {
 	atomicLevel.SetLevel(c.Level)
 	core := zapcore.NewCore(encoder, zapcore.AddSync(lumberJackLogger), atomicLevel)
 	return zap.New(core, zap.AddCaller(), zap.Development()), nil
+}
+
+func (c *Config) NewAccessLogger() (*zap.Logger, error) {
+	if !c.Access.Enabled {
+		return nil, fmt.Errorf("access logger is not enabled")
+	}
+	maxSize := int(c.Access.MaxSize)
+	if maxSize == 0 {
+		maxSize = int(c.MaxSize)
+	}
+	if maxSize < 1024*1024 {
+		maxSize = 1
+	} else {
+		maxSize = maxSize / 1024 * 1024
+	}
+
+	maxBackups := c.Access.MaxBackups
+	if maxBackups == 0 {
+		maxBackups = c.MaxBackups
+	}
+	if maxBackups < 1 {
+		maxBackups = 1
+	}
+
+	lumberJackLogger := &lumberjack.Logger{
+		Filename:   c.Access.FileName,
+		MaxSize:    maxSize,
+		MaxBackups: maxBackups,
+		Compress:   c.Access.Compress,
+	}
+
+	encoder, err := newEncoder(c.Format)
+	if err != nil {
+		return nil, err
+	}
+
+	return zap.New(
+		zapcore.NewCore(encoder, zapcore.AddSync(lumberJackLogger), c.Access.Level),
+		zap.AddCaller(),
+		zap.Development()), nil
 }
 
 func newEncoder(format string) (zapcore.Encoder, error) {

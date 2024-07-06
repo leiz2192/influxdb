@@ -139,6 +139,7 @@ type Handler struct {
 	registered       bool
 
 	Config           *Config
+	AccessLogger     *zap.Logger
 	Logger           *zap.Logger
 	CLFLogger        *log.Logger
 	accessLog        *os.File
@@ -632,27 +633,21 @@ func (h *Handler) serveQuery(w http.ResponseWriter, r *http.Request, user meta.U
 	var closing chan struct{}
 	if !async {
 		closing = make(chan struct{})
-		if notifier, ok := w.(http.CloseNotifier); ok {
-			// CloseNotify() is not guaranteed to send a notification when the query
-			// is closed. Use this channel to signal that the query is finished to
-			// prevent lingering goroutines that may be stuck.
-			done := make(chan struct{})
-			defer close(done)
 
-			notify := notifier.CloseNotify()
-			go func() {
-				// Wait for either the request to finish
-				// or for the client to disconnect
-				select {
-				case <-done:
-				case <-notify:
-					close(closing)
-				}
-			}()
-			opts.AbortCh = done
-		} else {
-			defer close(closing)
-		}
+		done := make(chan struct{})
+		defer close(done)
+
+		ctx := r.Context()
+		go func() {
+			// Wait for either the request to finish
+			// or for the client to disconnect
+			select {
+			case <-done:
+			case <-ctx.Done():
+				close(closing)
+			}
+		}()
+		opts.AbortCh = done
 	}
 
 	// Execute query.
@@ -815,7 +810,6 @@ func (h *Handler) async(q *influxql.Query, results <-chan *query.Result) {
 // in the database URL query value.  It is encoded using a forward slash like
 // "database/retentionpolicy" and we should be able to simply split that string
 // on the forward slash.
-//
 func bucket2dbrp(bucket string) (string, string, error) {
 	// test for a slash in our bucket name.
 	switch idx := strings.IndexByte(bucket, '/'); idx {
@@ -990,7 +984,16 @@ func (h *Handler) serveWrite(database, retentionPolicy, precision string, w http
 		WritePointsWithContext(context.Context, string, string, models.ConsistencyLevel, meta.User, []models.Point) error
 	}
 
-	writePoints := func() error {
+	writePoints := func() (e error) {
+		defer func(start time.Time) {
+			who := ""
+			if user != nil {
+				who = user.ID()
+			}
+			h.AccessLogger.Error("write finished", zap.Error(e), zap.String("db", database), logger.SkipIfNil("rp", retentionPolicy),
+				logger.SkipIfNil("precision", precision), zap.String("from", r.RemoteAddr), logger.SkipIfNil("user", who),
+				zap.Duration("elapsed", time.Since(start)))
+		}(time.Now())
 		switch pw := h.PointsWriter.(type) {
 		case pointsWriterWithContext:
 			var npoints, nvalues int64
@@ -1957,7 +1960,7 @@ func (h *Handler) SetHeadersWrapper(f func(http.ResponseWriter, *http.Request)) 
 	}
 }
 
-func (h *Handler) logging(inner http.Handler, name string) http.Handler {
+func (h *Handler) logging(inner http.Handler, _ string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		l := &responseLogger{w: w}
@@ -1995,7 +1998,7 @@ func init() {
 	}
 }
 
-func (h *Handler) recovery(inner http.Handler, name string) http.Handler {
+func (h *Handler) recovery(inner http.Handler, _ string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		l := &responseLogger{w: w}
